@@ -38,14 +38,26 @@ burglaries_full <- merge(census, burglaries_tracts, by.x = "tract", by.y = "TRAC
 ```
 
 ```{r}
-burglaries_full %>%  
+incidents_per_tract <- burglaries_full %>%  
   st_drop_geometry() %>% 
   group_by(tract) %>% 
-  count(name = "num_tracts") %>%  
-  arrange(desc(num_tracts))
-```
+  summarize(num_incidents_per_tract = n_distinct(incident_number)) %>%  
+  arrange(desc(num_incidents_per_tract))
 ```
 
+```{r}
+tract_pops <- burglaries_full %>% 
+  st_drop_geometry() %>% 
+  select(c(tract,population)) %>% 
+  distinct()
+```
+
+```{r}
+inner_join(incidents_per_tract,tract_pops, by="tract") %>% 
+  mutate(incidents_per_thousand_pop = num_incidents_per_tract/(population/1000)) %>% 
+  arrange(desc(incidents_per_thousand_pop)) %>% 
+  filter(is.finite(incidents_per_thousand_pop))
+```
 
 Add a new chunk by clicking the *Insert Chunk* button on the toolbar or by pressing *Ctrl+Alt+I*.
 
