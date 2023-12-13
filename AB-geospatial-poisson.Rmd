@@ -37,12 +37,19 @@ burglaries_tracts <- st_join(burglaries_geo, DC, join = st_within)
 burglaries_full <- merge(census, burglaries_tracts, by.x = "tract", by.y = "TRACTCE", all = FALSE)
 ```
 
+Part 2 - Exploratory Analysis
+Perform some exploraty analysis on your prepared dataset.
+
+Aggregate the data by census tract. Warning: each incident can appear multiple times if there are multiple victims, so be sure that you aren't double-counting any incidents.
+
+Which census tract had the highest number of burglaries? Which census tract had the highest number of burglaries per 1000 residents?
 ```{r}
 incidents_per_tract <- burglaries_full %>%  
   st_drop_geometry() %>% 
   group_by(tract) %>% 
   summarize(num_incidents_per_tract = n_distinct(incident_number)) %>%  
   arrange(desc(num_incidents_per_tract))
+incidents_per_tract
 ```
 
 ```{r}
@@ -53,10 +60,111 @@ tract_pops <- burglaries_full %>%
 ```
 
 ```{r}
-inner_join(incidents_per_tract,tract_pops, by="tract") %>% 
+incidents_per_thousand <- inner_join(incidents_per_tract,tract_pops, by="tract") %>% 
   mutate(incidents_per_thousand_pop = num_incidents_per_tract/(population/1000)) %>% 
   arrange(desc(incidents_per_thousand_pop)) %>% 
   filter(is.finite(incidents_per_thousand_pop))
+incidents_per_thousand
+```
+We're interested in the relationship between median income and number of aggravated burglaries, so examine those variables on their own and together to see what you can find. You may want to perform additional calculations, create plots, etc.
+```{r}
+incidents_per_thousand %>% 
+  ggplot(aes(x = tract, y = incidents_per_thousand_pop)) +
+  geom_col(position = "dodge") +
+  labs(x = "Tract Number", y = "Incidents Per Thousand Population", title = "Number of Incidents Per Tract") + 
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+```
+
+```{r}
+burglaries_full %>% 
+  st_drop_geometry() %>% 
+  count(offense_description)
+```
+```{r}
+tract_income <- burglaries_full %>% 
+  st_drop_geometry() %>% 
+  select(c(tract,median_income)) %>% 
+  distinct()
+
+incidents_per_tract_income <- inner_join(incidents_per_thousand,tract_income, by="tract") %>% 
+  arrange(desc(num_incidents_per_tract))
+incidents_per_tract_income
+```
+```{r}
+incidents_per_tract_income %>% 
+  ggplot(aes(x = median_income, y = num_incidents_per_tract)) +
+  geom_point() +
+  labs(x = "Median Income", y = "Number of Incidents", title = "Number of Incidents Per Tract vs. Median Income")
+```
+```{r}
+incidents_per_tract_income %>% 
+  ggplot(aes(x = median_income, y = num_incidents_per_tract)) +
+  geom_point() +
+  scale_x_log10() +
+  scale_y_log10() +
+  labs(x = "Median Income", y = "Number of Incidents", title = "Number of Incidents Per Tract vs. Median Income")
+```
+```{r}
+incidents_per_tract_income %>% 
+  ggplot(aes(x = median_income, y = incidents_per_thousand_pop)) +
+  geom_point() +
+  labs(x = "Median Income", y = "Number of Incidents Per Thousand", title = "Number of Incidents Per Thousand Population in a Tract vs. Median Income")
+```
+```{r}
+incidents_per_tract_income %>% 
+  ggplot(aes(x = median_income, y = incidents_per_thousand_pop)) +
+  geom_point() +
+  scale_x_log10() +
+  scale_y_log10() +
+  labs(x = "Median Income", y = "Number of Incidents Per Thousand", title = "Number of Incidents Per Thousand Population in a Tract vs. Median Income")
+```
+```{r}
+log10_incidents_df <- incidents_per_tract_income %>% 
+  mutate(log10_median_income = log10(median_income), 
+           log10_incidents_per_thousand_pop = log10(incidents_per_thousand_pop),
+           log10_num_incidents_per_tract = log10(num_incidents_per_tract))
+
+log10_incidents_df %>% 
+  select(log10_num_incidents_per_tract, log10_incidents_per_thousand_pop, log10_median_income) %>% 
+  cor()
+```
+Part 3 - Statistical Modeling
+Fit a Poisson regression model with target variable the rate of burglaries per census tract and with predictor the median income. Offset using the log of the population so that we are looking at the rate of burglaries per population instead of the number of burglaries. How can you interpret the meaning of the output? How do the estimates from the model compare to the observed data?
+```{r}
+pr_incidents_per_tract_income_const <- glm('num_incidents_per_tract ~ 1',
+               data = incidents_per_tract_income,
+               family = poisson)
+summary(pr_incidents_per_tract_income_const)
+```
+```{r}
+pr_incidents_income <- glm('num_incidents_per_tract ~ median_income',
+               data = incidents_per_tract_income,
+               family = poisson,
+               offset = log(population))
+summary(pr_incidents_income)
+```
+```{r}
+est_df <- tibble(
+  median_income = seq(from = min(incidents_per_tract_income$median_income, na.rm = TRUE), 
+                          to = max(incidents_per_tract_income$median_income, na.rm = TRUE), 
+                          length.out = 100),
+  population = seq(from = min(incidents_per_tract_income$population, na.rm = TRUE), 
+                          to = max(incidents_per_tract_income$population, na.rm = TRUE), 
+                          length.out = 100),    )
+
+est_df <- est_df %>%  
+  bind_cols(predict(pr_incidents_income, newdata = est_df, type = "response")) %>% 
+  rename("Estimated Mean Number of Incidents" = "...3")
+
+est_df %>%  
+  ggplot(aes(x = median_income, y = `Estimated Mean Number of Incidents`)) +
+  geom_line()
+
+ggplot(est_df) +
+  geom_line(aes(x = median_income, y = `Estimated Mean Number of Incidents`)) +
+  geom_point(data = incidents_per_tract_income, aes(x=median_income, y=num_incidents_per_tract))
+           
+```
 ```
 
 Add a new chunk by clicking the *Insert Chunk* button on the toolbar or by pressing *Ctrl+Alt+I*.
