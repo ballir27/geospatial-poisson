@@ -10,6 +10,7 @@ Try executing this chunk by clicking the *Run* button within the chunk or by pla
 ```{r}
 library(tidyverse)
 library(sf)
+library(scales)
 ``` 
 ```{r}
 burglaries_2023 <- read_csv("data/burglaries_2023.csv")
@@ -54,6 +55,7 @@ incidents_per_tract <- burglaries_full %>%
   group_by(tract) %>% 
   summarize(num_incidents_per_tract = n_distinct(incident_number)) %>%  
   arrange(desc(num_incidents_per_tract))
+sum(incidents_per_tract$num_incidents_per_tract)
 incidents_per_tract
 ```
 
@@ -81,6 +83,31 @@ burglaries_full_top10tracts
 ggplot(DC) +
   geom_sf() +
   geom_sf(data = burglaries_full_top10tracts$geometry, size = 0.5)
+```
+
+```{r}
+burglaries_full_calc <- merge(x=burglaries_full,y=incidents_per_thousand, 
+             by=c("tract","population"), all.x=TRUE)
+burglaries_full_calc <- burglaries_full_calc %>% 
+  filter(median_income>=0)
+burglaries_full_calc <- merge(x=burglaries_full_calc, y=DC, by.x = "tract", by.y = "TRACTCE", all.x=TRUE)
+burglaries_full_calc
+```
+```{r}
+burglaries_full_calc %>% 
+  st_drop_geometry() %>% 
+  select(c(geometry,median_income)) %>% 
+  distinct()
+```
+
+```{r}
+ggplot() +
+  geom_sf(data = DC) +
+  geom_sf(data = burglaries_full_calc, aes(geometry = geometry.y, fill=median_income)) +
+  scale_fill_continuous(labels=label_comma()) +
+  labs(fill = "Median Income") +
+  geom_sf(data = burglaries_full_calc, aes(geometry = geometry.x, color = incidents_per_thousand_pop)) +
+  scale_color_gradient(low = "yellow", high = "red")
 ```
 We're interested in the relationship between median income and number of aggravated burglaries, so examine those variables on their own and together to see what you can find. You may want to perform additional calculations, create plots, etc.
 ```{r}
