@@ -22,7 +22,6 @@ census %>% head()
 DC %>% 
   ggplot() +
   geom_sf()
-
 ```
 
 ```{r}
@@ -35,6 +34,12 @@ burglaries_geo <- st_as_sf(burglaries_2023 %>%  drop_na(latitude),
 ```{r}
 burglaries_tracts <- st_join(burglaries_geo, DC, join = st_within)
 burglaries_full <- merge(census, burglaries_tracts, by.x = "tract", by.y = "TRACTCE", all = FALSE)
+```
+
+```{r}
+ggplot(DC) +
+  geom_sf() +
+  geom_sf(data = burglaries_full$geometry, size = 0.5)
 ```
 
 Part 2 - Exploratory Analysis
@@ -64,7 +69,18 @@ incidents_per_thousand <- inner_join(incidents_per_tract,tract_pops, by="tract")
   mutate(incidents_per_thousand_pop = num_incidents_per_tract/(population/1000)) %>% 
   arrange(desc(incidents_per_thousand_pop)) %>% 
   filter(is.finite(incidents_per_thousand_pop))
+
+incidents_per_thousand_top10 <- incidents_per_thousand %>% head(10)
+
+burglaries_full_top10tracts <- filter(burglaries_full, tract %in% incidents_per_thousand_top10$tract)
+
 incidents_per_thousand
+incidents_per_thousand_top10
+burglaries_full_top10tracts
+
+ggplot(DC) +
+  geom_sf() +
+  geom_sf(data = burglaries_full_top10tracts$geometry, size = 0.5)
 ```
 We're interested in the relationship between median income and number of aggravated burglaries, so examine those variables on their own and together to see what you can find. You may want to perform additional calculations, create plots, etc.
 ```{r}
@@ -73,6 +89,11 @@ incidents_per_thousand %>%
   geom_col(position = "dodge") +
   labs(x = "Tract Number", y = "Incidents Per Thousand Population", title = "Number of Incidents Per Tract") + 
   theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+
+incidents_per_thousand_top10 %>% 
+  ggplot(aes(x = tract, y = incidents_per_thousand_pop)) +
+  geom_col() +
+  labs(x = "Tract Number", y = "Incidents Per Thousand Population", title = "Number of Incidents Per Tract")
 ```
 
 ```{r}
